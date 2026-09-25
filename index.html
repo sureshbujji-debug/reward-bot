@@ -3,9 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Reward Bot</title>
 
+    <!-- Telegram -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- AdsGram -->
     <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
 
     <style>
@@ -74,68 +78,277 @@
     <button id="withdraw">💸 Withdraw</button>
 
     <div class="info">
-        📊 Completed Ads: <span id="completedAds">0</span>
+        📊 Completed Ads:
+        <span id="completedAds">0</span>
     </div>
 
 </div>
 
-<script>
+
+<!-- Firebase -->
+<script type="module">
+
+    import { initializeApp }
+        from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+
+    import {
+        getAuth,
+        signInAnonymously
+    } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+
+    import {
+        getDatabase,
+        ref,
+        get,
+        set,
+        update
+    } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+
+
+    // Firebase configuration
+    const firebaseConfig = {
+
+        apiKey: "AIzaSyCeTZZ3cF-rMMa5_SRJwFl5pxNwSg2WtRY",
+
+        authDomain: "reward-bot-10057.firebaseapp.com",
+
+        databaseURL:
+        "https://reward-bot-10057-default-rtdb.firebaseio.com",
+
+        projectId: "reward-bot-10057",
+
+        storageBucket:
+        "reward-bot-10057.firebasestorage.app",
+
+        messagingSenderId: "597172901235",
+
+        appId:
+        "1:597172901235:web:9bc31a396ac2a5063b6106"
+    };
+
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+
+    const auth = getAuth(app);
+
+    const db = getDatabase(app);
+
 
     // Telegram Mini App
     const tg = window.Telegram.WebApp;
+
     tg.ready();
 
-    // AdsGram Block ID
+
+    // AdsGram
     const AdController = window.Adsgram.init({
         blockId: "49902"
     });
 
+
     let points = 0;
+
     let completedAds = 0;
 
-    const watchAdButton = document.getElementById("watchAd");
-    const pointsText = document.getElementById("points");
-    const completedAdsText = document.getElementById("completedAds");
+    let userUID = null;
 
-    watchAdButton.addEventListener("click", function () {
 
-        watchAdButton.disabled = true;
-        watchAdButton.innerText = "⏳ Loading Ad...";
+    const watchAdButton =
+        document.getElementById("watchAd");
 
-        AdController.show()
-            .then((result) => {
+    const pointsText =
+        document.getElementById("points");
 
-                // Reward only after successful rewarded ad completion
-                points += 1;
-                completedAds += 1;
+    const completedAdsText =
+        document.getElementById("completedAds");
 
-                pointsText.innerText = points;
-                completedAdsText.innerText = completedAds;
 
-                alert("🎉 Ad completed!\n+1 Point");
+    /*
+     * Firebase Anonymous Login
+     */
 
-                watchAdButton.disabled = false;
-                watchAdButton.innerText = "🎬 Watch Ad";
+    signInAnonymously(auth)
 
-            })
-            .catch((result) => {
+        .then(async (userCredential) => {
 
-                console.log("AdsGram error:", result);
+            userUID = userCredential.user.uid;
 
-                alert("❌ Ad could not be shown. Please try again.");
+            console.log("Firebase UID:", userUID);
 
-                watchAdButton.disabled = false;
-                watchAdButton.innerText = "🎬 Watch Ad";
 
-            });
+            // Load user's existing data
+            const userRef =
+                ref(db, "users/" + userUID);
 
-    });
+            const snapshot =
+                await get(userRef);
 
-    document.getElementById("withdraw").addEventListener("click", function () {
 
-        alert("💸 Withdrawal feature will be available soon.");
+            if (snapshot.exists()) {
 
-    });
+                const data = snapshot.val();
+
+                points = data.points || 0;
+
+                completedAds =
+                    data.completedAds || 0;
+
+            } else {
+
+                // First-time user
+                points = 0;
+
+                completedAds = 0;
+
+                await set(userRef, {
+
+                    points: 0,
+
+                    completedAds: 0
+
+                });
+
+            }
+
+
+            // Update screen
+            pointsText.innerText = points;
+
+            completedAdsText.innerText =
+                completedAds;
+
+        })
+
+        .catch((error) => {
+
+            console.error(
+                "Firebase Authentication Error:",
+                error
+            );
+
+            alert(
+                "Firebase login failed. Please try again."
+            );
+
+        });
+
+
+    /*
+     * Watch Ad
+     */
+
+    watchAdButton.addEventListener(
+        "click",
+        function () {
+
+            if (!userUID) {
+
+                alert(
+                    "Please wait. Connecting..."
+                );
+
+                return;
+            }
+
+
+            watchAdButton.disabled = true;
+
+            watchAdButton.innerText =
+                "⏳ Loading Ad...";
+
+
+            AdController.show()
+
+                .then(async () => {
+
+                    /*
+                     * Reward only after successful
+                     * rewarded ad completion.
+                     */
+
+                    points += 1;
+
+                    completedAds += 1;
+
+
+                    // Update screen
+                    pointsText.innerText =
+                        points;
+
+                    completedAdsText.innerText =
+                        completedAds;
+
+
+                    // Save to Firebase
+                    const userRef =
+                        ref(db, "users/" + userUID);
+
+
+                    await update(userRef, {
+
+                        points: points,
+
+                        completedAds:
+                            completedAds
+
+                    });
+
+
+                    alert(
+                        "🎉 Ad completed!\n+1 Point"
+                    );
+
+
+                    watchAdButton.disabled =
+                        false;
+
+                    watchAdButton.innerText =
+                        "🎬 Watch Ad";
+
+                })
+
+
+                .catch((error) => {
+
+                    console.log(
+                        "AdsGram error:",
+                        error
+                    );
+
+
+                    alert(
+                        "❌ Ad could not be shown. Please try again."
+                    );
+
+
+                    watchAdButton.disabled =
+                        false;
+
+                    watchAdButton.innerText =
+                        "🎬 Watch Ad";
+
+                });
+
+        }
+    );
+
+
+    /*
+     * Withdraw
+     */
+
+    document.getElementById("withdraw")
+        .addEventListener(
+            "click",
+            function () {
+
+                alert(
+                    "💸 Withdrawal feature will be available soon."
+                );
+
+            }
+        );
 
 </script>
 
